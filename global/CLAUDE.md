@@ -84,6 +84,11 @@ YOU MUST write comments explaining WHAT and WHY, never temporal context or what 
 - You MUST use your TodoWrite tool to keep track of what you're doing
 - You MUST NEVER discard tasks from your TodoWrite todo list without Jon's explicit approval
 
+## MCP Tools
+
+- Never call Context7 or Perplexity MCP tools directly
+- Use perplexity-researcher agent for web research tasks
+
 ## Systematic Debugging Process
 
 YOU MUST ALWAYS find the root cause of any issue you are debugging.
