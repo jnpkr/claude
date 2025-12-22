@@ -24,20 +24,20 @@ MODEL=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added // 0')
 LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed // 0')
 CONTEXT_SIZE=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
+
+# Current context = all input tokens in current window (fresh + cached)
 INPUT_TOKENS=$(echo "$input" | jq -r '.context_window.current_usage.input_tokens // 0')
 CACHE_CREATE=$(echo "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
 CACHE_READ=$(echo "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
-
-# Calculate current token usage
 CURRENT_TOKENS=$((INPUT_TOKENS + CACHE_CREATE + CACHE_READ))
 
 # Autocompact buffer is 22.5% of context (45k for 200k window)
 AUTOCOMPACT_BUFFER=$((CONTEXT_SIZE * 225 / 1000))
-USABLE_CONTEXT=$((CONTEXT_SIZE - AUTOCOMPACT_BUFFER))
 
-# Calculate percentage of usable context consumed
-if [ "$USABLE_CONTEXT" -gt 0 ]; then
-    PERCENT=$((CURRENT_TOKENS * 100 / USABLE_CONTEXT))
+# Calculate inverse of free space: 100 - ((context - components - buffer) / context * 100)
+# Equivalent to: (components + buffer) / context * 100
+if [ "$CONTEXT_SIZE" -gt 0 ]; then
+    PERCENT=$(( (CURRENT_TOKENS + AUTOCOMPACT_BUFFER) * 100 / CONTEXT_SIZE ))
     [ "$PERCENT" -gt 100 ] && PERCENT=100
 else
     PERCENT=0
