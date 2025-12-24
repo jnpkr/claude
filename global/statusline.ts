@@ -30,28 +30,44 @@ const EMPTY = "░░░░░░░░░░";
 const THRESHOLD_YELLOW = 70;
 const THRESHOLD_RED = 90;
 
-function getContextLength(transcriptPath: string): number {
-  if (!existsSync(transcriptPath)) return 0;
+interface ContextInfo {
+  baseline: number; // Pre-cached system overhead from first message
+  current: number; // Current total context
+}
+
+function getContextInfo(transcriptPath: string): ContextInfo {
+  if (!existsSync(transcriptPath)) return { baseline: 0, current: 0 };
 
   const lines = readFileSync(transcriptPath, "utf-8").trim().split("\n");
 
-  // Read backwards to find most recent main-chain entry with usage
-  for (let i = lines.length - 1; i >= 0; i--) {
+  let baseline = 0;
+  let current = 0;
+  let foundFirst = false;
+
+  // Find first usage entry for baseline, and last for current
+  for (let i = 0; i < lines.length; i++) {
     try {
       const entry: TranscriptEntry = JSON.parse(lines[i]);
       if (entry.isSidechain !== true && entry.message?.usage) {
         const u = entry.message.usage;
-        return (
+        const total =
           (u.input_tokens ?? 0) +
           (u.cache_read_input_tokens ?? 0) +
-          (u.cache_creation_input_tokens ?? 0)
-        );
+          (u.cache_creation_input_tokens ?? 0);
+
+        if (!foundFirst) {
+          // Baseline is total tokens from first message (session overhead)
+          baseline = total;
+          foundFirst = true;
+        }
+        current = total;
       }
     } catch {
       // Skip invalid JSON lines
     }
   }
-  return 0;
+
+  return { baseline, current };
 }
 
 function getColor(percent: number): string {
@@ -76,13 +92,15 @@ const linesRemoved = input.cost?.total_lines_removed ?? 0;
 const contextSize = input.context_window?.context_window_size ?? 200000;
 const transcriptPath = input.transcript_path ?? "";
 
-// Calculate context percentage
-const contextLength = getContextLength(transcriptPath);
-const usableContext = contextSize * 0.8;
-const percent = Math.min(
-  100,
-  Math.floor((contextLength / usableContext) * 100)
-);
+// Calculate context percentage relative to usable user capacity
+const { baseline, current } = getContextInfo(transcriptPath);
+const autoCompactThreshold = contextSize * 0.8;
+const usableForUser = autoCompactThreshold - baseline;
+const userUsage = current - baseline;
+const percent =
+  usableForUser > 0
+    ? Math.min(100, Math.max(0, Math.floor((userUsage / usableForUser) * 100)))
+    : 0;
 
 // Build output
 const bar = buildProgressBar(percent);
