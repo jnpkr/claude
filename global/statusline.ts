@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync } from "node:fs";
 import simpleGit from "simple-git";
 
 interface StatusJSON {
@@ -136,14 +136,30 @@ const contextSize = input.context_window?.context_window_size ?? 200000;
 const transcriptPath = input.transcript_path ?? "";
 
 // Calculate context percentage relative to usable user capacity
+// Claude's autocompact buffer is 22.5% of context window, so threshold is at 77.5%
 const { baseline, current } = getContextInfo(transcriptPath);
-const autoCompactThreshold = contextSize * 0.8;
+const autoCompactThreshold = contextSize * 0.775;
 const usableForUser = autoCompactThreshold - baseline;
 const userUsage = current - baseline;
 const percent =
   usableForUser > 0
     ? Math.min(100, Math.max(0, Math.floor((userUsage / usableForUser) * 100)))
     : 0;
+
+// Log context data for debugging
+const logFile = "/tmp/statusline-context.log";
+const logEntry = JSON.stringify({
+  ts: new Date().toISOString(),
+  percent,
+  baseline,
+  current,
+  userUsage,
+  usableForUser,
+  autoCompactThreshold,
+  contextSize,
+  transcript: transcriptPath,
+});
+appendFileSync(logFile, logEntry + "\n");
 
 // Build output
 const bar = buildProgressBar(percent);
