@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { readFileSync, existsSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 interface StatusJSON {
   model: { display_name: string };
@@ -22,6 +23,7 @@ interface TranscriptEntry {
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
+const BLUE = "\x1b[34m";
 const RESET = "\x1b[0m";
 
 const FILLED = "██████████";
@@ -82,6 +84,92 @@ function buildProgressBar(percent: number): string {
   return FILLED.slice(0, filled) + EMPTY.slice(0, empty);
 }
 
+interface GitStatus {
+  staged: number;
+  modified: number;
+  untracked: number;
+  deleted: number;
+  conflicted: number;
+}
+
+function getGitStatus(): GitStatus | null {
+  try {
+    const output = execSync("git status --porcelain", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 500,
+    });
+
+    const status: GitStatus = {
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+      deleted: 0,
+      conflicted: 0,
+    };
+
+    for (const line of output.split("\n")) {
+      if (!line || line.length < 2) continue;
+      const index = line[0];
+      const workTree = line[1];
+
+      // Conflicted - any U status or both sides modified same way
+      const isConflict =
+        index === "U" ||
+        workTree === "U" ||
+        (index === "A" && workTree === "A") ||
+        (index === "D" && workTree === "D");
+
+      if (isConflict) {
+        status.conflicted++;
+        continue;
+      }
+
+      // Untracked files
+      if (index === "?" && workTree === "?") {
+        status.untracked++;
+        continue;
+      }
+
+      // Staged changes (added, modified, renamed, copied - NOT deleted)
+      if (index === "A" || index === "M" || index === "R" || index === "C") {
+        status.staged++;
+      }
+
+      // Deleted files (staged or unstaged, counted once)
+      if (index === "D" || workTree === "D") {
+        status.deleted++;
+      }
+      // Modified in working tree (unstaged)
+      else if (workTree === "M") {
+        status.modified++;
+      }
+    }
+
+    return status;
+  } catch {
+    return null;
+  }
+}
+
+function buildGitStatusString(status: GitStatus | null): string {
+  if (status === null) return "";
+
+  const parts: string[] = [];
+
+  if (status.staged > 0) parts.push(`${GREEN}+${status.staged}${RESET}`);
+  if (status.modified > 0) parts.push(`${YELLOW}!${status.modified}${RESET}`);
+  if (status.untracked > 0) parts.push(`${BLUE}?${status.untracked}${RESET}`);
+  if (status.deleted > 0) parts.push(`${RED}✘${status.deleted}${RESET}`);
+  if (status.conflicted > 0) parts.push(`${RED}=${status.conflicted}${RESET}`);
+
+  if (parts.length === 0) {
+    return `${GREEN}✓${RESET}`;
+  }
+
+  return parts.join(" ");
+}
+
 // Read JSON from stdin
 const input: StatusJSON = JSON.parse(readFileSync(0, "utf-8"));
 
@@ -106,7 +194,9 @@ const percent =
 const bar = buildProgressBar(percent);
 const color = getColor(percent);
 const sep = `${RESET} · `;
+const gitStatus = buildGitStatusString(getGitStatus());
+const gitPart = gitStatus ? `${sep}📂 ${gitStatus}` : "";
 
 process.stdout.write(
-  `🤖 ${model}${sep}🧠 ${color}[${bar}] ${percent}%${sep}${GREEN}+${linesAdded}${RESET} ${RED}-${linesRemoved}${RESET}`
+  `🤖 ${model}${sep}🧠 ${color}[${bar}] ${percent}%${sep}✏️ ${GREEN}+${linesAdded}${RESET} ${RED}-${linesRemoved}${RESET}${gitPart}`
 );
