@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import simpleGit from "simple-git";
 
 interface StatusJSON {
   model: { display_name: string };
@@ -92,61 +92,16 @@ interface GitStatus {
   conflicted: number;
 }
 
-function getGitStatus(): GitStatus | null {
+async function getGitStatus(): Promise<GitStatus | null> {
   try {
-    const output = execSync("git status --porcelain", {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 500,
-    });
-
-    const status: GitStatus = {
-      staged: 0,
-      modified: 0,
-      untracked: 0,
-      deleted: 0,
-      conflicted: 0,
+    const status = await simpleGit().status();
+    return {
+      staged: status.staged.length + status.created.length,
+      modified: status.modified.length,
+      untracked: status.not_added.length,
+      deleted: status.deleted.length,
+      conflicted: status.conflicted.length,
     };
-
-    for (const line of output.split("\n")) {
-      if (!line || line.length < 2) continue;
-      const index = line[0];
-      const workTree = line[1];
-
-      // Conflicted - any U status or both sides modified same way
-      const isConflict =
-        index === "U" ||
-        workTree === "U" ||
-        (index === "A" && workTree === "A") ||
-        (index === "D" && workTree === "D");
-
-      if (isConflict) {
-        status.conflicted++;
-        continue;
-      }
-
-      // Untracked files
-      if (index === "?" && workTree === "?") {
-        status.untracked++;
-        continue;
-      }
-
-      // Staged changes (added, modified, renamed, copied - NOT deleted)
-      if (index === "A" || index === "M" || index === "R" || index === "C") {
-        status.staged++;
-      }
-
-      // Deleted files (staged or unstaged, counted once)
-      if (index === "D" || workTree === "D") {
-        status.deleted++;
-      }
-      // Modified in working tree (unstaged)
-      else if (workTree === "M") {
-        status.modified++;
-      }
-    }
-
-    return status;
   } catch {
     return null;
   }
@@ -194,7 +149,7 @@ const percent =
 const bar = buildProgressBar(percent);
 const color = getColor(percent);
 const sep = `${RESET} · `;
-const gitStatus = buildGitStatusString(getGitStatus());
+const gitStatus = buildGitStatusString(await getGitStatus());
 const gitPart = gitStatus ? `${sep}📂 ${gitStatus}` : "";
 
 process.stdout.write(
