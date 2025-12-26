@@ -15,5 +15,6 @@ Ongoing pattern where Claude Code violates explicit rules in CLAUDE.md despite h
 2. **Acting without permission**: Asked 'why @-include?' - immediately jumped to editing instead of just answering
 3. **Making assumptions instead of asking**: Invented conventions, assumed symlink structure, assumed statusline purpose - despite explicit rule 'YOU MUST ALWAYS STOP and ask for clarification rather than making assumptions'
 4. **Acknowledging rules without following them**: Said 'I should have asked' but then didn't actually ask
+5. **Triple failure after answering questions**: Answered questions about naming collisions and test beans, then immediately ran commands instead of (a) waiting for direction, (b) suggesting next action, (c) proactively suggesting a bean for the failure mode
 
 This pattern makes Claude Code unusable because explicit instructions aren't followed reliably.
